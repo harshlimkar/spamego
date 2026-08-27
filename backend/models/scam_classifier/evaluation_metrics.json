@@ -1,0 +1,50 @@
+{
+  "model_type_evaluated": "tfidf_logistic_regression",
+  "overall_accuracy": 0.9756,
+  "macro_precision": 0.9494,
+  "macro_recall": 0.9327,
+  "macro_f1": 0.9409,
+  "per_class_metrics": {
+    "SAFE": {
+      "precision": 0.9833,
+      "recall": 0.9895,
+      "f1": 0.9864
+    },
+    "SPAM": {
+      "precision": 0.9813,
+      "recall": 0.9545,
+      "f1": 0.9677
+    },
+    "SCAM": {
+      "precision": 0.8837,
+      "recall": 0.8539,
+      "f1": 0.8686
+    }
+  },
+  "scam_recall": 0.8539,
+  "scam_f1": 0.8686,
+  "confusion_matrix": {
+    "labels": [
+      "SAFE",
+      "SPAM",
+      "SCAM"
+    ],
+    "matrix": [
+      [
+        940,
+        2,
+        8
+      ],
+      [
+        3,
+        105,
+        2
+      ],
+      [
+        13,
+        0,
+        76
+      ]
+    ]
+  }
+}

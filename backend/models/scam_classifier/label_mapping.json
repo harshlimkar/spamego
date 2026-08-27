@@ -1,0 +1,15 @@
+{
+  "label2id": {
+    "SAFE": 0,
+    "SPAM": 1,
+    "SCAM": 2
+  },
+  "id2label": {
+    "0": "SAFE",
+    "1": "SPAM",
+    "2": "SCAM"
+  },
+  "model_type": "tfidf_logistic_regression",
+  "val_scam_recall": 0.8863636363636364,
+  "val_macro_f1": 0.9674262608917864
+}
