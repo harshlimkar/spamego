@@ -17,3 +17,6 @@ class InstagramAccount(Base):
     is_connected = Column(Boolean, default=False)
     last_scraped = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    monitoring_status = Column(String, default="stopped")  # "running", "stopped", "error"
+    session_started_at = Column(DateTime, nullable=True)
+    target_profile_url = Column(Text, nullable=True)
