@@ -62,6 +62,23 @@ class NumberRepository:
         conn.close()
         return {"status": "UNKNOWN", "details": None}
 
+    @staticmethod
+    def cache_remote_result(number, status, categories):
+        # Phase 12: Add local caching
+        conn = get_db_connection()
+        if status == "VERIFIED_OFFICIAL":
+            conn.execute('''
+                INSERT INTO official_numbers (number, organization, category, source, verified_date, status)
+                VALUES (?, 'Remote Verified', ?, 'Remote Server', date('now'), ?)
+            ''', (number, categories, status))
+        elif status == "REPORTED_SCAM":
+            conn.execute('''
+                INSERT INTO reported_numbers (number, report_type, category, report_count, first_reported, last_reported)
+                VALUES (?, 'Scam', ?, 1, date('now'), date('now'))
+            ''', (number, categories))
+        conn.commit()
+        conn.close()
+
 class EventRepository:
     @staticmethod
     def log_event(event_type, sender, timestamp, content, risk_score, campaign_id):
