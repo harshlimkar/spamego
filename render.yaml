@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: scamego-flutter-web
+    env: static
+    buildCommand: ./render-build.sh
+    staticPublishPath: ./flutter_app/build/web
+    autoDeploy: true
