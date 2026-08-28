@@ -645,6 +645,8 @@ class AppState extends ChangeNotifier {
 
     _calculateTodaysStats();
     notifyListeners();
+  }
+  
   void toggleAutomaticCriticalAlerts(bool value) {
     _automaticCriticalAlerts = value;
     _storage.savePreferences({'automatic_critical_alerts': value});
