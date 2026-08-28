@@ -30,16 +30,37 @@ def analyze_content(
         if not user:
             return {}
 
-        # 1. Run ML Analysis using existing scam classifier
+        # 1. Run Offline Universal Engine
+        import sys, os
+        if os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")) not in sys.path:
+            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+            
+        from core.universal_engine import UniversalScamEngine
+        from core.models import NormalizedMessage
+        
+        universal_engine = UniversalScamEngine()
+        norm_msg = NormalizedMessage(
+            source="INSTAGRAM",
+            sender=author,
+            message=text,
+            conversation_id=f"ig_{content_id}"
+        )
+        universal_result = universal_engine.analyze(norm_msg)
+
+        # 2. Run ML Analysis using existing scam classifier
         ml_result = ml_service.analyze_text(text)
         
         if ml_result.get("scam_label") == "ERROR":
             logger.error(f"ML Analysis error: {ml_result.get('error')}")
-            return {}
-
-        scam_label = ml_result["scam_label"]
-        risk_score = ml_result["risk_score"]
-        confidence = ml_result["confidence"]
+            # Fallback to universal engine if ML fails
+            scam_label = "SCAM" if universal_result.risk_score >= 60 else "SAFE"
+            risk_score = universal_result.risk_score
+            confidence = 0.8
+        else:
+            final_risk = max(universal_result.risk_score, ml_result.get("risk_score", 0))
+            scam_label = ml_result["scam_label"] if final_risk < 70 else "SCAM"
+            risk_score = final_risk
+            confidence = ml_result["confidence"]
 
         # 2. Determine severity level based on risk score
         if risk_score >= 80:
