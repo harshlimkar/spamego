@@ -37,10 +37,18 @@ class SMSProcessor:
 
         # 5. Local Risk adjustments (Verification impact)
         final_score = analysis_result.risk_score
-        if ver_result["risk_modifier"] > 0:
-            final_score = min(100, final_score + ver_result["risk_modifier"])
-            if final_score >= 85: analysis_result.risk_level = "CRITICAL"
-            elif final_score >= 60: analysis_result.risk_level = "HIGH"
+        if ver_result.get("risk_modifier"):
+            final_score = max(0, min(100, final_score + ver_result["risk_modifier"]))
+            if final_score >= 85:
+                analysis_result.risk_level = "CRITICAL"
+            elif final_score >= 60:
+                analysis_result.risk_level = "HIGH"
+            elif final_score >= 40:
+                analysis_result.risk_level = "MEDIUM"
+            elif final_score >= 20:
+                analysis_result.risk_level = "LOW"
+            else:
+                analysis_result.risk_level = "SAFE"
 
         # Phase 10: Automatic Remote Query (optional offline mode)
         if ver_result["status"] in ["UNKNOWN", "UNVERIFIED"] and analysis_result.risk_level in ["MEDIUM", "HIGH", "CRITICAL"]:
@@ -69,7 +77,7 @@ class SMSProcessor:
                 print("[LOCAL ENGINE] Remote query failed or timed out. Proceeding with local risk.")
 
         # 6. Update Campaign
-        risk_result_dict = {"score": final_score, "level": analysis_result.risk_level}
+        risk_result_dict = {"score": final_score, "level": str(analysis_result.risk_level)}
         camp_result = self.campaign_engine.process_event(
             sender_number, 
             risk_result_dict, 
@@ -78,16 +86,21 @@ class SMSProcessor:
             text
         )
 
+        categories = list(set(analysis_result.scam_types + [analysis_result.impersonated_entity or ""]))
+        if "KYC_SCAM" in analysis_result.scam_types or "kyc" in text.lower():
+            categories.append("KYC Scam")
+
         # Build final response combining analysis and context
         return {
             "sender_number": sender_number,
             "timestamp": norm_msg.timestamp,
             "message_text": text,
             "detected_language": norm_result["detected_language"],
-            "analysis": analysis_result.dict(),
+            "categories": categories,
+            "analysis": analysis_result.model_dump() if hasattr(analysis_result, 'model_dump') else analysis_result.dict(),
             "sender_status": ver_result["status"],
             "event_risk_score": final_score,
-            "event_risk_level": analysis_result.risk_level,
+            "event_risk_level": str(analysis_result.risk_level),
             "campaign_id": camp_result["campaign_id"],
             "final_risk_score": camp_result["campaign_risk_score"],
             "final_risk_level": camp_result["campaign_risk_level"]

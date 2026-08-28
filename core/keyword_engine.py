@@ -47,7 +47,10 @@ class KeywordEngine:
             "legal action": {"weight": 40, "domain": "LEGAL", "scam_type": "LEGAL_SCAM", "category": "Legal Threat", "behavior": "THREAT"},
             "seized": {"weight": 30, "domain": "LEGAL", "scam_type": "LEGAL_SCAM", "category": "Legal Threat", "behavior": "THREAT"},
             "fir": {"weight": 30, "domain": "LEGAL", "scam_type": "LEGAL_SCAM", "category": "Legal Threat", "behavior": "THREAT"},
-            "cyber crime": {"weight": 35, "domain": "LEGAL", "scam_type": "POLICE_IMPERSONATION", "category": "Police Impersonation", "behavior": "AUTHORITY_PRESSURE"},
+            "cyber crime": {"weight": 35, "domain": "LEGAL", "scam_type": "POLICE_IMPERSONATION", "category": "Police Impersonation", "behavior": "THREAT"},
+            "criminal case": {"weight": 35, "domain": "LEGAL", "scam_type": "DIGITAL_ARREST", "category": "Police Impersonation", "behavior": "THREAT"},
+            "aadhaar": {"weight": 15, "category": "Identity Phishing", "behavior": "IDENTITY_REQUEST"},
+            "transfer": {"weight": 25, "domain": "FINANCIAL", "scam_type": "PAYMENT_SCAM", "category": "Payment Scam", "behavior": "PAYMENT_REQUEST"},
 
             # Medical Emergency
             "blood needed": {"weight": 30, "domain": "MEDICAL", "scam_type": "MEDICAL_EMERGENCY", "category": "Medical Emergency", "behavior": "EMERGENCY_CLAIM"},

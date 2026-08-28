@@ -46,11 +46,13 @@ class RuleEngine:
             }
         ]
 
-    def evaluate_rules(self, categories, keywords_detected, context_data=None):
-        # We now accept domains, behaviors, scam_types directly from KeywordEngine via kwargs,
-        # but to keep backward compatibility or signature simplicity, we'll parse them.
-        # Actually, let's assume we receive the full kw_result dict instead.
-        pass
+    def evaluate_rules(self, categories=None, keywords_detected=None, context_data=None):
+        if isinstance(keywords_detected, dict):
+            return self.evaluate_behavioral_rules(keywords_detected, context_data=context_data)
+        elif isinstance(categories, dict):
+            return self.evaluate_behavioral_rules(categories, context_data=context_data)
+        kw_dict = {"categories": categories or [], "behaviors": [], "domains": []}
+        return self.evaluate_behavioral_rules(kw_dict, context_data=context_data)
         
     def evaluate_behavioral_rules(self, kw_result, context_data=None):
         triggered_rules = []
