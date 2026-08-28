@@ -135,11 +135,14 @@ class _CallLogTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final appState = Provider.of<AppState>(context);
     final number = call['number'] as String? ?? 'Unknown';
     final name = call['name'] as String? ?? 'Unknown';
     final type = call['type'] as int? ?? 0;
     final timestamp = call['timestamp'] as int? ?? 0;
     final duration = call['duration'] as int? ?? 0;
+    
+    final isSpam = appState.isNumberReportedSpam(number);
     
     IconData typeIcon;
     Color typeColor;
@@ -161,6 +164,11 @@ class _CallLogTile extends StatelessWidget {
         typeColor = theme.colorScheme.onSurfaceVariant;
     }
     
+    if (isSpam) {
+      typeIcon = Icons.report;
+      typeColor = Colors.red;
+    }
+    
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
     final timeStr = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
     final dateStr = '${date.day}/${date.month}/${date.year}';
@@ -174,6 +182,7 @@ class _CallLogTile extends StatelessWidget {
     
     return Card(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      color: isSpam ? Colors.red.shade50 : null,
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: typeColor.withOpacity(0.15),
@@ -181,12 +190,27 @@ class _CallLogTile extends StatelessWidget {
         ),
         title: Text(
           name == 'Unknown' ? number : name,
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: isSpam ? Colors.red.shade900 : null,
+          ),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (name != 'Unknown') Text(number, style: theme.textTheme.bodyMedium),
+            if (name != 'Unknown') 
+              Text(
+                isSpam ? '$number (Reported Spam)' : number, 
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: isSpam ? Colors.red.shade700 : null,
+                  fontWeight: isSpam ? FontWeight.bold : FontWeight.normal,
+                )
+              ),
+            if (name == 'Unknown' && isSpam)
+              Text('Reported Spam', style: theme.textTheme.bodyMedium?.copyWith(
+                  color: Colors.red.shade700,
+                  fontWeight: FontWeight.bold,
+              )),
             Text(
               '$dateStr at $timeStr${durationStr.isNotEmpty ? ' • $durationStr' : ''}',
               style: theme.textTheme.bodySmall?.copyWith(
@@ -200,10 +224,20 @@ class _CallLogTile extends StatelessWidget {
           onSelected: (value) {
             if (value == 'analyze') onAnalyze(number, name);
             if (value == 'block') _showBlockDialog(context, number);
+            if (value == 'report_spam') {
+              appState.reportSpamNumber(number);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Number temporarily marked as spam')),
+              );
+            }
           },
           itemBuilder: (context) => [
             const PopupMenuItem(value: 'analyze', child: Text('Analyze for Scam')),
             const PopupMenuItem(value: 'block', child: Text('Block Number')),
+            const PopupMenuItem(
+              value: 'report_spam', 
+              child: Text('Report as Spam', style: TextStyle(color: Colors.red)),
+            ),
           ],
         ),
         onTap: () => onAnalyze(number, name),

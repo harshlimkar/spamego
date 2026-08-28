@@ -36,7 +36,20 @@ class AppState extends ChangeNotifier {
   CampaignAlert? _latestCampaignAlert;
   final Set<String> _processedCampaignAlertIds = {};
   
+  // Temporarily reported spam numbers
+  final Set<String> _reportedSpamNumbers = {};
+  
   CampaignAlert? get latestCampaignAlert => _latestCampaignAlert;
+  Set<String> get reportedSpamNumbers => _reportedSpamNumbers;
+  
+  void reportSpamNumber(String number) {
+    if (number.isNotEmpty) {
+      _reportedSpamNumbers.add(number);
+      notifyListeners();
+    }
+  }
+  
+  bool isNumberReportedSpam(String number) => _reportedSpamNumbers.contains(number);
   
   // Settings
   bool _alertLowRisk = false;

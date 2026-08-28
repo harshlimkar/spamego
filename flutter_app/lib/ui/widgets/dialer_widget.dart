@@ -163,9 +163,28 @@ class _DialerWidgetState extends State<DialerWidget> {
                         letterSpacing: 4,
                       ),
                       suffixIcon: _numberController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: _clearNumber,
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.report, color: Colors.red),
+                                  tooltip: 'Report Spam',
+                                  onPressed: () {
+                                    final number = _numberController.text.replaceAll(RegExp(r'[^\d+]'), '');
+                                    if (number.isNotEmpty) {
+                                      Provider.of<AppState>(context, listen: false).reportSpamNumber(number);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Number marked as spam temporarily')),
+                                      );
+                                      _clearNumber();
+                                    }
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: _clearNumber,
+                                ),
+                              ],
                             )
                           : null,
                     ),
