@@ -138,17 +138,17 @@ class AlertTile extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              if (risk.explanations.isNotEmpty) ...[
+              if (risk.explanations?.isNotEmpty ?? false) ...[
                 const SizedBox(height: AppSpacing.md),
                 const Divider(height: AppSpacing.sm),
                 Wrap(
                   spacing: AppSpacing.sm,
                   runSpacing: AppSpacing.xs,
-                  children: risk.explanations.take(2).map((e) => Chip(
+                  children: (risk.explanations?.take(2).map((e) => Chip(
                     label: Text(e, style: theme.textTheme.labelSmall),
-                    backgroundColor: riskColor.withOpacity(0.1),
-                    side: BorderSide(color: riskColor.withOpacity(0.3)),
-                  )).toList(),
+                    backgroundColor: riskColor.withValues(alpha: 0.1),
+                    side: BorderSide(color: riskColor.withValues(alpha: 0.3)),
+                  )).toList() ?? []),
                 ),
               ],
             ],

@@ -46,7 +46,7 @@ class AlertsScreen extends StatelessWidget {
           body: alerts.isEmpty
               ? _EmptyAlertsState()
               : RefreshIndicator(
-                  onRefresh: () async => appState.notifyListeners(),
+                  onRefresh: () async {},
                   child: ListView.builder(
                     padding: const EdgeInsets.all(AppSpacing.screenPadding),
                     itemCount: alerts.length,
@@ -134,7 +134,7 @@ class _EmptyAlertsState extends StatelessWidget {
             Icon(
               Icons.verified_outlined,
               size: 80,
-              color: Colors.green.withOpacity(0.5),
+              color: Colors.green.withValues(alpha: 0.5),
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
@@ -172,8 +172,8 @@ class _ScamEventDetail extends StatelessWidget {
     final theme = Theme.of(context);
     final risk = event.risk;
     final riskColor = RiskColors.forLevel(risk.level, context);
-    final riskBgColor = RiskColors.backgroundForLevel(risk.level, context);
     
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -239,7 +239,7 @@ class _ScamEventDetail extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         
-        if (risk.explanations.isNotEmpty) ...[
+        if (risk.explanations?.isNotEmpty ?? false) ...[
           Text('Why we alerted you:', style: theme.textTheme.titleMedium),
           const SizedBox(height: AppSpacing.md),
           Card(
@@ -247,7 +247,7 @@ class _ScamEventDetail extends StatelessWidget {
               padding: const EdgeInsets.all(AppSpacing.md),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: risk.explanations.map((e) => Padding(
+                children: risk.explanations!.map((e) => Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,

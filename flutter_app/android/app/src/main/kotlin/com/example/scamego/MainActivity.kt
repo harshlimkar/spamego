@@ -2,6 +2,7 @@ package com.example.scamego
 
 import android.Manifest
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -9,9 +10,11 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.app.role.RoleManager
+import android.provider.Settings
 import android.provider.Telephony
 import androidx.annotation.NonNull
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -32,13 +35,16 @@ class MainActivity : FlutterActivity() {
     private val METHOD_CHANNEL = "scamego/platform"
     private val SMS_EVENT_CHANNEL = "scamego/sms_stream"
     private val CALL_EVENT_CHANNEL = "scamego/call_stream"
+    private val NOTIFICATION_EVENT_CHANNEL = "scamego/notification_stream"
 
     private var smsReceiver: SmsReceiver? = null
     private var eventSink: EventSink? = null
     private var callEventSink: EventSink? = null
+    private var notificationEventSink: EventSink? = null
     private var methodChannel: MethodChannel? = null
     private var eventChannel: EventChannel? = null
     private var callEventChannel: EventChannel? = null
+    private var notificationEventChannel: EventChannel? = null
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -76,8 +82,23 @@ class MainActivity : FlutterActivity() {
             }
         })
 
+        notificationEventChannel = EventChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATION_EVENT_CHANNEL)
+        notificationEventChannel?.setStreamHandler(object : StreamHandler {
+            override fun onListen(arguments: Any?, events: EventSink) {
+                notificationEventSink = events
+            }
+
+            override fun onCancel(arguments: Any?) {
+                notificationEventSink = null
+            }
+        })
+
         SmsReceiver.onSmsReceived = { sender, body ->
             sendSmsEvent(sender, body)
+        }
+
+        ScameGoNotificationListenerService.onNotificationReceived = { notificationMap ->
+            sendNotificationEvent(notificationMap)
         }
     }
 
@@ -108,10 +129,23 @@ class MainActivity : FlutterActivity() {
                 openNotificationListenerSettings()
                 result.success(null)
             }
+            "isNotificationListenerEnabled" -> {
+                result.success(isNotificationListenerEnabled())
+            }
             else -> {
                 result.notImplemented()
             }
         }
+    }
+
+    private fun isNotificationListenerEnabled(): Boolean {
+        val packageName = applicationContext.packageName
+        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+        if (flat != null && flat.contains(packageName)) {
+            return true
+        }
+        val enabledPackages = NotificationManagerCompat.getEnabledListenerPackages(this)
+        return enabledPackages.contains(packageName)
     }
 
     private fun checkPermissions(): Map<String, Any> {
@@ -130,7 +164,7 @@ class MainActivity : FlutterActivity() {
         }
         
         perms["isDefaultDialer"] = isCallScreening
-        perms["notificationListener"] = false
+        perms["notificationListener"] = isNotificationListenerEnabled()
         return perms
     }
 
@@ -160,8 +194,16 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun openNotificationListenerSettings() {
-        val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
-        startActivity(intent)
+        try {
+            val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        } catch (e: Exception) {
+            // Fallback for older devices
+            val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        }
     }
 
     private fun registerSmsReceiver() {
@@ -227,6 +269,14 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun sendNotificationEvent(notificationMap: Map<String, Any>) {
+        notificationEventSink?.let { sink ->
+            CoroutineScope(Dispatchers.Main).launch {
+                sink.success(notificationMap)
+            }
+        }
+    }
+
     private fun sendCallEvent(number: String) {
         callEventSink?.let { sink ->
             CoroutineScope(Dispatchers.Main).launch {
@@ -255,9 +305,16 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Notify Dart of permission changes when app resumes (e.g. returning from settings)
+        methodChannel?.invokeMethod("onPermissionsChanged", null)
+    }
+
     override fun onDestroy() {
         unregisterSmsReceiver()
         SmsReceiver.onSmsReceived = null
+        ScameGoNotificationListenerService.onNotificationReceived = null
         super.onDestroy()
     }
 }

@@ -73,11 +73,20 @@ class ScamFirewall:
         channel = self._normalize_channel(event.get("channel"))
         text = self._build_text(event, channel)
         sender = event.get("sender") or event.get("number") or ""
-        norm = messaging.normalize(text)
-        normalized = norm["normalized"]
-        language = norm["detected_language"]
-        translated = messaging.translate_tanglish(normalized)
-        reg_signals = messaging.regional_eng_signals(translated)
+        
+        # 1. Process via Multilingual Intelligence Pipeline
+        from .language import language_pipeline
+        threat_input = language_pipeline.process(
+            text=text,
+            channel=channel,
+            sender=sender,
+            event_id=event.get("id", ""),
+            timestamp=event.get("timestamp", "")
+        )
+        
+        normalized = threat_input.normalized_content
+        language = threat_input.detected_language
+        translated = threat_input.english_content
 
         extraction = entity_extractor.extract(text)
         explicit_urls = []
@@ -92,10 +101,20 @@ class ScamFirewall:
         all_urls = list(dict.fromkeys(extraction.urls + explicit_urls))
         link_findings = link_analyzer.analyze_many(all_urls) if all_urls else []
 
+        # Run ML on canonical English translation + original text fusion
         ml_result = ml_analyze(translated)
         ml_label = ml_result.get("scam_label", "UNKNOWN")
         ml_conf = ml_result.get("confidence", 0.0)
         ml_score = ml_result.get("risk_score", 30)
+
+        # Fallback to original text if translation returned benign but original text had raw scam indicators
+        if ml_label == "SAFE" and text != translated:
+            orig_ml = ml_analyze(text)
+            if orig_ml.get("scam_label") in ("SCAM", "SPAM"):
+                ml_result = orig_ml
+                ml_label = orig_ml["scam_label"]
+                ml_conf = orig_ml["confidence"]
+                ml_score = orig_ml["risk_score"]
 
         if channel in ("sms", "social"):
             ver_sender = self.verifier.verify_sender(sender, channel) if sender else None
@@ -164,10 +183,16 @@ class ScamFirewall:
             "timestamp": event.get("timestamp") or datetime.now(timezone.utc).isoformat(),
             "sender": sender,
             "language": language,
+            "detected_script": threat_input.detected_script,
+            "is_code_mixed": threat_input.is_code_mixed,
+            "english_content": translated,
+            "translation_confidence": threat_input.translation_confidence,
+            "translation_status": threat_input.translation_status,
+            "protected_tokens": threat_input.protected_tokens,
             "text": text,
             "normalized": normalized,
             "translated_signal_text": translated,
-            "regional_signals": reg_signals,
+            "regional_signals": threat_input.protected_tokens,
             "verification": _as_obj(primary_verification),
             "link_findings": link_findings,
             "otp": _as_obj(otp_finding),

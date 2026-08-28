@@ -4,13 +4,24 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, 'scamego_local.db')
 
+def _raw_conn():
+    c = sqlite3.connect(DB_PATH)
+    c.row_factory = sqlite3.Row
+    return c
+
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = _raw_conn()
+    # Ensure tables exist
+    res = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='trusted_contacts'").fetchone()
+    if not res:
+        conn.close()
+        init_db()
+        seed_db()
+        conn = _raw_conn()
     return conn
 
 def init_db():
-    conn = get_db_connection()
+    conn = _raw_conn()
     cursor = conn.cursor()
 
     # Users / Profile
@@ -115,7 +126,7 @@ def init_db():
     conn.close()
 
 def seed_db():
-    conn = get_db_connection()
+    conn = _raw_conn()
     cursor = conn.cursor()
 
     # Clear existing to be safe during dev/testing

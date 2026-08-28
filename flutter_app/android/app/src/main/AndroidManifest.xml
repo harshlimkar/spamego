@@ -51,6 +51,17 @@
             </intent-filter>
         </service>
 
+        <!-- ScameGo Notification Listener Service -->
+        <service
+            android:name=".ScameGoNotificationListenerService"
+            android:label="ScameGo Scam Protection Service"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -1,9 +1,9 @@
-// Dart port of the unified risk engine from Python
+// Dart port of the unified risk engine from Python, enhanced with full 18k+ dataset knowledge
 import 'dart:math';
-import 'dart:convert';
 
 import '../models/scam_event.dart';
-import '../models/scam_event.dart';
+import 'threat_event_normalizer.dart';
+import 'language/multilingual_pipeline.dart';
 
 class RiskEngine {
   static const Map<String, int> _intentPoints = {
@@ -13,17 +13,20 @@ class RiskEngine {
     'payment_request': 22,
     'threat_blackmail': 28,
     'otp_request': 18,
-    'bank_impersonation': 14,
-    'government_impersonation': 14,
+    'bank_impersonation': 16,
+    'government_impersonation': 16,
     'family_emergency': 16,
-    'kyc_verification': 12,
-    'prize_lottery': 14,
+    'kyc_verification': 14,
+    'prize_lottery': 16,
+    'fake_loan': 18,
+    'rummy_gambling': 14,
+    'part_time_job': 18,
     'investment': 14,
-    'malware_link': 16,
+    'malware_link': 18,
     'delivery_request': 10,
     'information_phishing': 12,
-    'loan_offer': 8,
-    'marketing': 2,
+    'loan_offer': 10,
+    'marketing': 4,
     'notification': 0,
     'greeting': 0,
     'unknown': 0,
@@ -40,21 +43,13 @@ class RiskEngine {
     'benign': 0,
   };
 
-  static const Map<String, int> _mlLabelPoints = {
-    'SAFE': 0,
-    'SPAM': 18,
-    'SCAM': 34,
-    'UNKNOWN': 8,
-    'ERROR': 8,
-  };
-
   static int _clamp(int v, {int lo = 0, int hi = 100}) => max(lo, min(hi, v));
 
   static String _levelForScore(int score) {
-    if (score >= 85) return 'critical';
-    if (score >= 70) return 'high';
-    if (score >= 50) return 'medium';
-    if (score >= 30) return 'low';
+    if (score >= 80) return 'critical';
+    if (score >= 60) return 'high';
+    if (score >= 35) return 'medium';
+    if (score >= 20) return 'low';
     return 'safe';
   }
 
@@ -71,25 +66,18 @@ class RiskEngine {
     required List<LinkFinding> links,
     required List<double> amounts,
   }) {
-    // Content score: blend ML and heuristic
     final content = (0.5 * contentScore + 0.5 * heuristicScore).round();
-    
-    // Intent points
     final topIntent = intents.isNotEmpty ? intents.first.name : 'unknown';
     final intentPts = _intentPoints[topIntent] ?? 0;
-    
-    // Stage points
     final stagePts = _stagePoints[stage.stage] ?? 0;
-    
-    // OTP extra
+
     int otpExtra = 0;
     if (otp.isRisky) {
       otpExtra = 15;
     } else if (otp.context != 'none' && otp.context != 'received_legitimate_like') {
       otpExtra = 6;
     }
-    
-    // Link extra
+
     int linkExtra = 0;
     for (final link in links) {
       if (link.isSuspicious) {
@@ -99,38 +87,32 @@ class RiskEngine {
       }
     }
     linkExtra = _clamp(linkExtra, lo: -15, hi: 20);
-    
-    // Amounts extra
+
     int amountsExtra = 0;
     if (amounts.isNotEmpty) {
       amountsExtra = min(8, amounts.length * 3);
     }
-    
-    // Gross score
+
     double gross = 0.4 * content + intentPts + stagePts + otpExtra + linkExtra + amountsExtra;
-    
-    // Sender modifier
     final senderMod = verification?.riskModifier ?? 0;
     int score = _clamp((gross + senderMod).round());
     String level = _levelForScore(score);
-    
-    // Legitimate signal check
-    bool isLegit = verification != null && 
+
+    bool isLegit = verification != null &&
         ['VERIFIED_OFFICIAL', 'TRUSTED_CONTACT', 'VERIFIED_SENDER_ID', 'VERIFIED_DOMAIN'].contains(verification.status);
-    
+
     if (isLegit && score > 40) {
       score = _clamp(score - 20);
       level = _levelForScore(score);
     }
-    
-    // Confidence
+
     double confidence = 0.4;
     if (intents.isNotEmpty && intents.first.confidence > 0.7) {
       confidence = max(0.4, mlConfidence);
     } else {
       confidence = max(0.4, max(mlConfidence, intents.isNotEmpty ? intents.first.confidence : 0.5));
     }
-    
+
     final factors = <String, dynamic>{
       'ml_score': _clamp(contentScore),
       'heuristic_score': _clamp(heuristicScore),
@@ -145,20 +127,20 @@ class RiskEngine {
       'sender_modifier': senderMod,
       'legitimate_signal': isLegit,
     };
-    
+
     final explanations = _explain(topIntent, stage, otp, links, verification, amounts, level);
-    
+
     return RiskResult(
       score: score,
       level: level,
-      edgeScore: _clamp(edgeScore),
-      confidence: confidence.clamp(0.0, 1.0),
+      edgeScore: edgeScore,
+      confidence: confidence,
       isLegitimateSignal: isLegit,
       factors: factors,
       explanations: explanations,
     );
   }
-  
+
   static List<String> _explain(
     String intent,
     ScamStage stage,
@@ -169,57 +151,46 @@ class RiskEngine {
     String level,
   ) {
     final lines = <String>[];
-    final legit = verification != null && 
-        ['VERIFIED_OFFICIAL', 'TRUSTED_CONTACT', 'VERIFIED_SENDER_ID', 'VERIFIED_DOMAIN'].contains(verification.status);
-    
-    if (legit) {
-      lines.add('The ${verification.status != "VERIFIED_DOMAIN" ? "sender" : "link"} was verified against an official source.');
+    final legit = verification != null && verification.status.startsWith('VERIFIED');
+
+    if (intent == 'otp_disclosure' || intent == 'otp_request') {
+      lines.add('It is asking for an OTP, which is a private secret.');
     }
-    
-    if (amounts.isNotEmpty && !['safe', 'low'].contains(level)) {
-      lines.add('Money involved: ₹${amounts.first.toInt()}.');
-    }
-    
     if (intent == 'bank_impersonation') {
-      lines.add('The message pretends to be from a bank or payment service.');
-    } else if (intent == 'government_impersonation') {
-      lines.add('The message pretends to be from a government authority.');
-    } else if (intent == 'customer_care_impersonation') {
-      lines.add('The message pretends to be customer care or tech support.');
+      lines.add('The message pretends to be from a bank or financial institution.');
     }
-    
-    if (intent == 'otp_request' || intent == 'otp_disclosure') {
-      lines.add('It is asking for an OTP, which is a private secret and should never be shared.');
-    }
-    if (intent == 'payment_request') {
-      lines.add('It is pushing you to send money.');
-    }
-    if (intent == 'remote_access') {
-      lines.add('It is asking you to install a remote-control application.');
+    if (intent == 'government_impersonation') {
+      lines.add('It claims to be from a government agency (TRAI, Police, IT, ED, CBI).');
     }
     if (intent == 'credential_phishing') {
-      lines.add('It is asking for a password, PIN or card details.');
+      lines.add('It is asking for passwords, PIN, or card credentials.');
     }
     if (intent == 'prize_lottery') {
-      lines.add('It claims you have won a prize or lottery.');
+      lines.add('It claims you won a prize, lottery, parcel, or reward.');
+    }
+    if (intent == 'fake_loan') {
+      lines.add('Unsolicited instant loan offer with suspicious links or advance fee demand.');
+    }
+    if (intent == 'part_time_job') {
+      lines.add('High-paying daily online job lure requiring private WhatsApp contact.');
+    }
+    if (intent == 'rummy_gambling') {
+      lines.add('Unsolicited rummy/betting cash bonus lure with withdrawal links.');
     }
     if (intent == 'investment') {
-      lines.add('It promises unusually high investment returns.');
+      lines.add('It promises guaranteed high returns on trading or crypto.');
     }
     if (intent == 'threat_blackmail' || intent == 'family_emergency') {
-      lines.add('It uses fear to pressure you into acting fast.');
+      lines.add('It uses fear and urgency to pressure you into acting fast.');
     }
     if (stage.stage == 'urgency') {
       lines.add('A strong time pressure was used to rush a decision.');
-    }
-    if (stage.stage == 'isolation') {
-      lines.add('It tries to stop you from talking to family or the bank.');
     }
     if (stage.stage == 'credential_harvesting') {
       lines.add('The goal appears to be stealing your private credentials.');
     }
     if (stage.stage == 'exploitation') {
-      lines.add('The message appears to be moving towards taking money or access.');
+      lines.add('The interaction appears to be moving towards money transfer.');
     }
     if (otp.isRisky && otp.reason.isNotEmpty) {
       lines.add(otp.reason);
@@ -235,11 +206,12 @@ class RiskEngine {
     if (lines.isEmpty) {
       lines.add('Routine message with no strong scam signals.');
     }
-    
+
     return lines.take(6).toList();
   }
-  
-  // Static method for offline/local analysis fallback
+
+  // ── Static method for offline/local analysis fallback ────────────────────────
+
   static ScamEvent analyzeLocal({
     required String channel,
     required String sender,
@@ -250,89 +222,268 @@ class RiskEngine {
     String? recipient,
   }) {
     final timestamp = DateTime.now();
-    final risk = _analyzeOffline(text);
-    final event = _createScamEvent(
+    final risk = _analyzeOffline(
+      text,
+      sender: sender,
+      channel: channel,
+      amountInr: amountInr,
+      upiId: upiId,
+    );
+    return _createScamEvent(
       channel: channel,
       sender: sender,
       text: text,
       risk: risk,
       timestamp: timestamp,
     );
-    return event;
   }
-  
-  static _RiskResult _analyzeOffline(String text) {
+
+  static _RiskResult _analyzeOffline(
+    String text, {
+    String sender = '',
+    String channel = 'sms',
+    double? amountInr,
+    String? upiId,
+  }) {
     var score = 0;
-    final t = text.toLowerCase();
-    
-    // Credentials & Auth
-    const authWords = ['otp', 'kyc', 'pin', 'password', 'login', 'verify', 'update kyc', 'pan', 'aadhar', 'aadhaar'];
-    if (authWords.any((w) => t.contains(w))) score += 30;
-    
-    // Financial Context
-    const financeWords = ['bank', 'account', 'sbi', 'hdfc', 'icici', 'axis', 'pnb', 'loan', 'credit card', 'debit card', 'upi', 'payment', 'rupees', 'rs.', 'amount', 'transfer', 'paytm', 'phonepe', 'gpay', 'google pay'];
-    if (financeWords.any((w) => t.contains(w))) score += 20;
-    
-    // Urgency & Threats
-    const urgentWords = ['block', 'suspend', 'freeze', 'lock', 'deactivate', 'terminate', 'expire', 'immediate', 'urgent', 'now', 'warning', 'alert', 'attention', 'fail', 'cancel', 'udane', 'turant'];
-    if (urgentWords.any((w) => t.contains(w))) score += 20;
-    
-    // Scams, Lures, and Links
-    const lureWords = ['lottery', 'prize', 'won', 'winner', 'gift', 'cashback', 'reward', 'offer', 'free', 'job', 'salary', 'work from home', 'earn', 'lucky draw', 'jio alert'];
-    if (lureWords.any((w) => t.contains(w))) score += 40;
-    
-    const linkWords = ['click', 'http', 'www', '.com', '.in', 'link', 'download', 'apk'];
-    if (linkWords.any((w) => t.contains(w))) score += 20;
-    
-    // Base score
-    score += 10;
-    
-    // Combinations
+    final threatInput = MultilingualPipeline.process(text);
+    final deobf = threatInput.deobfuscatedText;
+    final english = threatInput.canonicalEnglishText.toLowerCase();
+    final t = '${deobf.toLowerCase()} $english';
+    final s = sender.toLowerCase();
+
+    // 1. HIGH-SEVERITY SCAM PATTERNS (Instantly flagged High/Critical)
+    // -------------------------------------------------------------
+    // Wallet / Direct Cash / Unsolicited Withdrawal
+    const walletScamWords = [
+      'added to your wallet account',
+      'bonus is credited to your wallet',
+      'bonus is credited',
+      'directly withdraw now',
+      'directly move to your bank',
+      'instantly withdraw now',
+      'move to your bank a/c',
+      'join now to withdrawal',
+      'direct transfer to bank a/c',
+      'visitor id',
+      'receive rs.10,000 to wallet',
+      'withdraw directly',
+      'withdrawal directly',
+    ];
+    if (walletScamWords.any((w) => t.contains(w))) score += 65;
+
+    // Apple / Luxury Parcel / 1 Crore Lottery Scams / Award lures
+    const bigLotteryWords = [
+      'winning parcel',
+      'winning fund',
+      '1 crore',
+      'iphone 15',
+      'arriving india',
+      'arrive india',
+      're-verification form',
+      'apple usa',
+      'jio lucky draw',
+      'jio prize claim',
+      'won ₹',
+      'won ?',
+      'award',
+      'selected to receive',
+      'selected to a receive',
+      'receive a £',
+      'receive a rs',
+      'prize pool',
+    ];
+    if (bigLotteryWords.any((w) => t.contains(w))) score += 70;
+
+    // Fake Part-time Jobs & Daily Earning
+    const partTimeJobWords = [
+      'amazon urgently recruiting for part-time',
+      'part-time jobs, daily salary',
+      'earn 1000-3000rs every day',
+      'earn 8000-20000/day',
+      'earn 200-3000 rs a day',
+      'online part-time job',
+      'work online without investment',
+      'daily salary 1000-7000rs',
+      'no time limit, contact: https://wa.me',
+    ];
+    if (partTimeJobWords.any((w) => t.contains(w))) score += 65;
+
+    // Rummy & Gambling Unsolicited Cash Lures
+    const rummyLures = [
+      'junglee rummy',
+      'welcome bonus on first deposit',
+      'special5500',
+      'prize pool: 5,00,00,000',
+      'prize pool: 2,50,00,000',
+      'prize pool: 36,00,000',
+      'millionaire tournament',
+      'superstar finale',
+      'play rummy & win cash',
+      'my 11circle',
+      'bonus in your rummy wallet',
+      'rs. 11,350 welcome bonus',
+    ];
+    if (rummyLures.any((w) => t.contains(w))) score += 55;
+
+    // Bank Manager Impersonation / Debit Card Expiry / KYC Fraud
+    const bankImpersonationWords = [
+      'bank manager of sbi',
+      'debit card is about to expire',
+      'issue new card',
+      'kyc has expired',
+      'update immediately or account will be blocked',
+      'account will be blocked today',
+      'update kyc',
+      'pan card link',
+      'electricity bill disconnect',
+      'power cut tonight',
+      'digital arrest',
+      'cbi verification',
+      'trai disconnection',
+    ];
+    if (bankImpersonationWords.any((w) => t.contains(w))) score += 60;
+
+    // Suspicious Shortlink & Phishing Domains from Datasets
+    const suspiciousDomains = [
+      'oi1.in', 'sr3.in', '0kb.in', '1kx.in', 'gmg.im', 'kx6.in', 'p6x.in', 'qz6.in',
+      'a0n.in', '1vp.cc', 'weurl.co', 'bnkbzr.co', 'rp17.in', 'tltx.in', 'is.gd', 'cutt.ly',
+      's.cplry.com', 'tiny.xbees.in', 'xyz', 'top', 'click', 'site', 'bid',
+    ];
+    if (suspiciousDomains.any((d) => t.contains(d))) score += 40;
+
+    // OTP Request & Theft (Matches both exact phrases and fuzzy keyword combinations, excluding "do not share" warnings)
+    final hasDoNotShareOtp = t.contains('do not share') || t.contains('dont share') || t.contains("don't share") || t.contains('never share');
+    final isOtpTheft = t.contains('otp') &&
+        !hasDoNotShareOtp &&
+        (t.contains('share') ||
+            t.contains('tell') ||
+            t.contains('give') ||
+            t.contains('send') ||
+            t.contains('forward') ||
+            t.contains('provide') ||
+            t.contains('batao') ||
+            t.contains('dijiye') ||
+            t.contains('sollu') ||
+            t.contains('kudu'));
+    if (isOtpTheft) score += 85;
+
+    // Remote Access Software
+    const remoteAppWords = ['anydesk', 'teamviewer', 'quicksupport', 'screen share', 'install rustdesk', 'download apk'];
+    if (remoteAppWords.any((w) => t.contains(w))) score += 60;
+
+    // Fake Investment / Trading Telegram / WhatsApp Groups
+    const investmentLures = [
+      'guaranteed returns on crypto',
+      'double your money',
+      'profit of 10% every day',
+      'xai international securities',
+      'chief investment officer',
+      'prof sohan sharma',
+      'assistant rama',
+      'arvind singh',
+      'vijay bajaj',
+      'stockholding corporation',
+    ];
+    if (investmentLures.any((w) => t.contains(w))) score += 45;
+
+    // Unsolicited Instant Loans & Predatory Lending
+    const loanScamWords = [
+      'loan is approve', 'zero documentation', 'loan application is ready',
+      'olyv loan', 'smartcoin loan', 'kreditbee', 'truebalance', 'creditlinks',
+      'fast loans', '50% off on proc. fees', '50% off processing fees',
+    ];
+    if (loanScamWords.any((w) => t.contains(w))) score += 40;
+
+    // General Threat Context
+    const authWords = ['otp', 'kyc', 'pin', 'password', 'login', 'verify', 'pan', 'aadhar', 'aadhaar', 'security deposit'];
+    const urgentWords = ['blocked', 'suspend', 'freeze', 'lock', 'deactivate', 'terminate', 'expire', 'immediate', 'urgent', 'warning', 'mandatory', 'stoppage of services'];
+    const linkWords = ['http', 'www', '.in/', '.co/', 'click', 'link'];
+
     final hasAuth = authWords.any((w) => t.contains(w));
     final hasUrgent = urgentWords.any((w) => t.contains(w));
     final hasLink = linkWords.any((w) => t.contains(w));
-    
+    final isPaymentContext = channel == 'payment' || upiId != null || (amountInr != null && amountInr > 0) || t.contains('upi payment request');
+
     if (hasAuth && hasUrgent) score += 30;
-    if (hasUrgent && hasLink) score += 30;
-    if (hasAuth && hasLink) score += 30;
-    
+    if (hasUrgent && hasLink) score += 25;
+    if (hasAuth && hasLink) score += 25;
+    if (isPaymentContext && (hasAuth || hasUrgent)) score += 55;
+
+    // 2. SAFE / LEGITIMATE CHECKS
+    // -------------------------------------------------------------
+    // Official TRAI Telecom notifications (e.g. data quota alert without phishing link)
+    if (t.contains('daily data quota used') || t.contains('data quota as per plan')) {
+      if (!t.contains('withdraw') && !t.contains('bonus') && !t.contains('kyc')) {
+        score = 5;
+      }
+    }
+
+    // Official Missed Call Alerts
+    if (t.contains('you have a missed call from') && t.contains('thankyou, team jio')) {
+      score = 0;
+    }
+
+    // Safe Transactional Banking
+    if ((t.contains('debited') || t.contains('credited') || t.contains('spent on')) &&
+        !hasLink && !hasUrgent && !isOtpTheft &&
+        !t.contains('withdraw now') && !t.contains('bonus is credited to your wallet')) {
+      score = 5;
+    }
+
     final finalScore = score.clamp(0, 100);
     final level = _levelForScore(finalScore);
-    
+
     return _RiskResult(
       score: finalScore,
       level: level,
       explanations: _generateExplanations(t, level),
     );
   }
-  
-  // Duplicate _levelForScore removed
-  
+
   static List<String> _generateExplanations(String text, String level) {
     final explanations = <String>[];
     final t = text.toLowerCase();
-    
-    if (t.contains('bank') || t.contains('sbi') || t.contains('hdfc')) {
-      explanations.add('The message pretends to be from a bank or payment service.');
+
+    if (t.contains('apple') && (t.contains('winning') || t.contains('parcel') || t.contains('1 crore'))) {
+      explanations.add('High-risk international parcel / lottery advance-fee scam lure.');
     }
-    if (t.contains('otp') && (t.contains('tell') || t.contains('share') || t.contains('sollunga') || t.contains('दे') || t.contains('दें'))) {
-      explanations.add('It is asking for an OTP, which is a private secret and should never be shared.');
+    if (t.contains('wallet') && (t.contains('added') || t.contains('bonus') || t.contains('withdraw'))) {
+      explanations.add('Fake wallet credit lure attempting to steal bank credentials.');
     }
-    if (t.contains('payment') || t.contains('pay') || t.contains('transfer')) {
-      explanations.add('It is pushing you to send money.');
+    if (t.contains('bank manager') || (t.contains('debit card') && t.contains('expire'))) {
+      explanations.add('Fake bank officer impersonation to harvest debit card / CVV details.');
     }
-    if (t.contains('anydesk') || t.contains('teamviewer') || t.contains('remote')) {
-      explanations.add('It is asking you to install a remote-control application.');
+    if (t.contains('rummy') || t.contains('millionaire') || t.contains('special5500')) {
+      explanations.add('Unsolicited gambling/rummy cash bonus phishing attempt.');
     }
-    if (['block', 'suspend', 'freeze', 'urgent', 'immediate', 'now'].any((w) => t.contains(w))) {
-      explanations.add('A strong time pressure was used to rush a decision.');
+    if (t.contains('amazon') && t.contains('part-time')) {
+      explanations.add('Part-time job task scam asking for private WhatsApp contact.');
+    }
+    if (t.contains('loan') && (t.contains('approve') || t.contains('zero documentation'))) {
+      explanations.add('Unsolicited predatory loan message with unverified links.');
+    }
+    if (t.contains('kyc') && (t.contains('expire') || t.contains('block') || t.contains('suspend'))) {
+      explanations.add('Fake KYC suspension panic message pushing malicious verification.');
+    }
+    if (t.contains('otp') && (t.contains('tell') || t.contains('share') || t.contains('sollunga') || t.contains('batao'))) {
+      explanations.add('Direct OTP theft attempt. OTP must never be shared.');
+    }
+    if (t.contains('anydesk') || t.contains('teamviewer') || t.contains('quicksupport')) {
+      explanations.add('Remote access app installation request.');
     }
     if (explanations.isEmpty) {
-      explanations.add('Routine message with no strong scam signals.');
+      if (level == 'critical' || level == 'high') {
+        explanations.add('Multiple urgency and credential harvesting signals detected.');
+      } else if (level == 'medium' || level == 'low') {
+        explanations.add('Promotional / marketing message with unverified external links.');
+      } else {
+        explanations.add('Routine transactional alert with no threat indicators.');
+      }
     }
     return explanations;
   }
-  
+
   static ScamEvent _createScamEvent({
     required String channel,
     required String sender,
@@ -341,53 +492,73 @@ class RiskEngine {
     required DateTime timestamp,
   }) {
     String headline;
-    final t = text.toLowerCase();
-    if (t.contains('bank') || t.contains('sbi') || t.contains('hdfc')) headline = 'Possible Bank Impersonation';
-    else if (t.contains('income tax') || t.contains('government') || t.contains('police')) headline = 'Possible Government Impersonation';
-    else if (t.contains('otp') && (t.contains('tell') || t.contains('share') || t.contains('sollunga'))) headline = 'OTP Request Scam';
-    else if (t.contains('payment') || t.contains('pay') || t.contains('transfer') || t.contains('upi')) headline = 'Payment Request Risk';
-    else if (t.contains('anydesk') || t.contains('teamviewer') || t.contains('remote')) headline = 'Remote Access Risk';
-    else if (t.contains('prize') || t.contains('lottery') || t.contains('won')) headline = 'Prize / Lottery Scam';
-    else headline = 'Routine Check';
-    
+    final threatInput = MultilingualPipeline.process(text);
+    final deobf = threatInput.deobfuscatedText;
+    final english = threatInput.canonicalEnglishText.toLowerCase();
+    final t = '${deobf.toLowerCase()} $english';
+
+    if ((t.contains('apple') || t.contains('iphone')) && (t.contains('winning') || t.contains('1 crore') || t.contains('parcel') || t.contains('fund'))) {
+      headline = 'International Parcel / Prize Scam';
+    } else if (t.contains('winning') || t.contains('prize') || t.contains('award') || t.contains('lottery')) {
+      headline = 'Lottery / Prize Scam';
+    } else if (t.contains('wallet') && (t.contains('withdraw') || t.contains('bonus') || t.contains('added'))) {
+      headline = 'Fake Wallet Cash Lure';
+    } else if (t.contains('bank manager') || (t.contains('debit card') && t.contains('expire'))) {
+      headline = 'Bank Card Expiry Impersonation';
+    } else if (t.contains('rummy') || t.contains('special5500') || t.contains('bonus')) {
+      headline = 'Rummy / Betting Lure Phishing';
+    } else if (t.contains('part-time') || (t.contains('earn') && t.contains('day'))) {
+      headline = 'Fake Part-Time Job Scam';
+    } else if (t.contains('loan') || t.contains('credit card limit') || t.contains('zero documentation')) {
+      headline = 'Predatory Loan Scam';
+    } else if (t.contains('otp') && (t.contains('tell') || t.contains('share') || t.contains('sollunga') || t.contains('bhejo') || t.contains('batao'))) {
+      headline = 'Critical OTP Theft Attempt';
+    } else if (t.contains('kyc') && (t.contains('expire') || t.contains('block') || t.contains('pending'))) {
+      headline = 'Fake KYC Suspension Risk';
+    } else if (t.contains('anydesk') || t.contains('teamviewer')) {
+      headline = 'Remote Access Control Risk';
+    } else {
+      headline = risk.level == 'safe' ? 'Verified Safe Message' : 'Suspicious Message Alert';
+    }
+
     Intervention intervention;
     switch (risk.level) {
       case 'critical':
-        intervention = Intervention(
+        intervention = const Intervention(
           action: 'STOP',
           title: 'Critical Scam Detected',
-          message: 'This interaction has very strong scam indicators. Stop and verify before doing anything.',
+          message: 'This message has high-severity scam indicators. Stop and do not click links or share details.',
           buttons: ['STOP & VERIFY', 'REPORT SCAM', 'ASK FAMILY'],
         );
         break;
       case 'high':
-        intervention = Intervention(
+        intervention = const Intervention(
           action: 'CONFIRM',
-          title: 'Possible Scam',
-          message: 'This interaction looks risky. Do not share OTP, PIN or passwords.',
-          buttons: ['I UNDERSTAND', 'VERIFY NUMBER', 'SEE REASON'],
+          title: 'Possible Fraud Warning',
+          message: 'This interaction looks risky. Do not transfer funds or share private OTPs.',
+          buttons: ['I UNDERSTAND', 'VERIFY SENDER', 'SEE REASON'],
         );
         break;
       case 'medium':
-        intervention = Intervention(
+        intervention = const Intervention(
           action: 'WARN',
           title: 'Be Careful',
-          message: 'This message shows some suspicious signals. Check before replying or clicking links.',
+          message: 'This message contains promotional or unverified links.',
           buttons: ['OK'],
         );
         break;
       default:
-        intervention = Intervention(action: 'NONE', title: '', message: '', buttons: []);
+        intervention = const Intervention(action: 'NONE', title: '', message: '', buttons: []);
     }
-    
+
     return ScamEvent(
       id: 'evt_${timestamp.millisecondsSinceEpoch}',
       channel: channel,
       timestamp: timestamp,
       sender: sender,
       text: text,
-      normalized: text.toLowerCase(),
-      language: 'en',
+      normalized: threatInput.canonicalEnglishText,
+      language: threatInput.language.languageName,
       verdict: risk.level.toUpperCase(),
       headline: headline,
       risk: RiskResult(
@@ -403,15 +574,13 @@ class RiskEngine {
           moneyInr: 0.0,
           credentialRisk: risk.level == 'critical' || risk.level == 'high' ? 'high' : 'low',
           otpRequested: text.toLowerCase().contains('otp'),
-          description: risk.level == 'critical' || risk.level == 'high' 
-              ? 'Potential financial risk' 
-              : 'Low risk',
+          description: risk.level == 'critical' || risk.level == 'high' ? 'High financial threat' : 'Low risk',
         ),
         eventCount: 1,
         channels: [channel],
       ),
       intervention: intervention,
-      familyAlert: FamilyAlertDecision(alertSent: false),
+      familyAlert: const FamilyAlertDecision(alertSent: false),
     );
   }
 }
@@ -420,7 +589,7 @@ class _RiskResult {
   final int score;
   final String level;
   final List<String> explanations;
-  
+
   _RiskResult({
     required this.score,
     required this.level,

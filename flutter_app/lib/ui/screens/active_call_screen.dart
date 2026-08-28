@@ -20,6 +20,7 @@ class ActiveCallScreen extends StatefulWidget {
 
 class _ActiveCallScreenState extends State<ActiveCallScreen> {
   late ScamEvent _currentEvent;
+  Function(ScamEvent)? _previousCallback;
 
   @override
   void initState() {
@@ -28,7 +29,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     
     // Listen for live updates from STT / ML pipeline
     final platform = Provider.of<PlatformService>(context, listen: false);
-    final previousCallback = platform.onCallReceived;
+    _previousCallback = platform.onCallReceived;
     
     platform.onCallReceived = (event) {
       if (mounted) {
@@ -37,6 +38,14 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
         });
       }
     };
+  }
+
+  @override
+  void dispose() {
+    // Restore the previous callback to avoid memory leaks
+    final platform = Provider.of<PlatformService>(context, listen: false);
+    platform.onCallReceived = _previousCallback;
+    super.dispose();
   }
 
   @override

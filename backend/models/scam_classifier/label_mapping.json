@@ -9,7 +9,9 @@
     "1": "SPAM",
     "2": "SCAM"
   },
-  "model_type": "tfidf_logistic_regression",
-  "val_scam_recall": 0.8863636363636364,
-  "val_macro_f1": 0.9674262608917864
+  "model_type": "tfidf_ngram_logistic_regression",
+  "val_scam_recall": 0.9876325088339223,
+  "val_scam_f1": 0.9898185037627268,
+  "val_macro_f1": 0.9819341465018995,
+  "total_samples": 18221
 }

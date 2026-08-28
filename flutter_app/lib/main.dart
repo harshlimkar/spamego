@@ -9,26 +9,52 @@ import 'ui/screens/active_call_screen.dart';
 import 'ui/screens/payment_risk_screen.dart';
 import 'ui/screens/messages_screen.dart';
 import 'ui/screens/settings_screen.dart';
+import 'ui/screens/alerts_screen.dart';
+import 'ui/screens/protection_screen.dart';
+import 'ui/screens/recovery_screen.dart';
+import 'ui/screens/family_screen.dart';
+import 'ui/screens/sms_protection_screen.dart';
+import 'ui/screens/link_checker_screen.dart';
+import 'ui/screens/developer_dashboard_screen.dart';
 import 'services/platform_service.dart';
-// Stubs for missing screens
-class AlertsScreen extends StatelessWidget {
-  const AlertsScreen({super.key});
-  @override Widget build(BuildContext context) => const Scaffold(body: Center(child: Text('Alerts Screen')));
-}
+import 'services/threat_analysis_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize platform service
-  final platformService = PlatformService();
-  await platformService.initialize();
-  
-  // Initialize app state
+
+  // 1. Initialize app state
   final appState = AppState();
   await appState.initialize();
 
+  // 2. Initialize platform service
+  final platformService = PlatformService();
+  await platformService.initialize();
+
+  // 3. Initialize threat analysis adapter service
+  final threatAnalysisService = ThreatAnalysisService(appState: appState);
+
+  // 4. Wire real-time notification listener to threat analysis pipeline
+  platformService.onNotificationReceived = (notificationEvent) async {
+    debugPrint('[Main] Intercepted Notification: ${notificationEvent.appName} (${notificationEvent.source.name}) - ${notificationEvent.title}');
+    final scamEvent = await threatAnalysisService.processNotification(notificationEvent);
+    if (scamEvent != null && (scamEvent.risk.level == 'critical' || scamEvent.risk.level == 'high')) {
+      debugPrint('[Main] High/Critical Threat Detected in Notification: ${scamEvent.headline}');
+    }
+  };
+
+  // 5. Wire real-time SMS stream to threat analysis pipeline
+  platformService.onSmsReceived = (smsEvent) async {
+    debugPrint('[Main] Intercepted SMS: ${smsEvent.sender} - ${smsEvent.text}');
+    await threatAnalysisService.processSms(
+      sender: smsEvent.sender,
+      text: smsEvent.text,
+      timestamp: smsEvent.timestamp,
+    );
+  };
+
+  // 6. Wire real-time call screening
   platformService.onCallReceived = (scamEvent) {
     if (navigatorKey.currentState != null) {
       navigatorKey.currentState!.push(
@@ -41,12 +67,13 @@ void main() async {
       );
     }
   };
-  
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: appState),
         ChangeNotifierProvider.value(value: platformService),
+        Provider.value(value: threatAnalysisService),
       ],
       child: const ScameGoApp(),
     ),
@@ -70,9 +97,15 @@ class ScameGoApp extends StatelessWidget {
         '/home': (context) => const HomeScreen(),
         '/calls': (context) => const CallsScreen(),
         '/messages': (context) => const MessagesScreen(),
+        '/sms': (context) => const SmsProtectionScreen(),
         '/alerts': (context) => const AlertsScreen(),
-        '/protection': (context) => const PaymentRiskScreen(),
+        '/protection': (context) => const ProtectionScreen(),
+        '/payment': (context) => const PaymentRiskScreen(),
         '/settings': (context) => const SettingsScreen(),
+        '/recovery': (context) => const RecoveryScreen(),
+        '/family': (context) => const FamilyScreen(),
+        '/link-check': (context) => const LinkCheckerScreen(),
+        '/dev-dashboard': (context) => const DeveloperDashboardScreen(),
       },
     );
   }
@@ -87,16 +120,16 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
-  
+
   final List<Widget> _screens = [
     const HomeScreen(),
     const CallsScreen(),
     const MessagesScreen(),
     const AlertsScreen(),
-    const PaymentRiskScreen(),
+    const ProtectionScreen(),
     const SettingsScreen(),
   ];
-  
+
   final List<NavigationDestination> _destinations = [
     const NavigationDestination(
       icon: Icon(Icons.home_outlined),
@@ -114,13 +147,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       label: 'Messages',
     ),
     const NavigationDestination(
-      icon: Icon(Icons.warning_outlined),
-      selectedIcon: Icon(Icons.warning),
+      icon: Icon(Icons.warning_amber_outlined),
+      selectedIcon: Icon(Icons.warning_amber),
       label: 'Alerts',
     ),
     const NavigationDestination(
-      icon: Icon(Icons.security_outlined),
-      selectedIcon: Icon(Icons.security),
+      icon: Icon(Icons.shield_outlined),
+      selectedIcon: Icon(Icons.shield),
       label: 'Protection',
     ),
     const NavigationDestination(

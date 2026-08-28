@@ -1,5 +1,4 @@
 // Core data models for ScameGo
-import 'package:equatable/equatable.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'scam_event.freezed.dart';

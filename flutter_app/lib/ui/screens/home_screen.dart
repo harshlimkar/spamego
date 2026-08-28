@@ -1,31 +1,12 @@
-// Home screen - Overall protection status
+// Home screen — Overall protection status & dashboard
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/app_state.dart';
 import '../../ui/theme/app_theme.dart';
-// Stubs for missing widgets
-class ProtectionStatusCard extends StatelessWidget {
-  final AppState appState;
-  const ProtectionStatusCard({super.key, required this.appState});
-  @override Widget build(BuildContext context) => const Card(child: Padding(padding: EdgeInsets.all(16.0), child: Text('Protection Status')));
-}
-
-class StatsGrid extends StatelessWidget {
-  final AppState appState;
-  const StatsGrid({super.key, required this.appState});
-  @override Widget build(BuildContext context) => const Card(child: Padding(padding: EdgeInsets.all(16.0), child: Text('Stats Grid')));
-}
-
-class RecentActivityCard extends StatelessWidget {
-  final AppState appState;
-  const RecentActivityCard({super.key, required this.appState});
-  @override Widget build(BuildContext context) => const Card(child: Padding(padding: EdgeInsets.all(16.0), child: Text('Recent Activity')));
-}
-
-class QuickActions extends StatelessWidget {
-  const QuickActions({super.key});
-  @override Widget build(BuildContext context) => const Card(child: Padding(padding: EdgeInsets.all(16.0), child: Text('Quick Actions')));
-}
+import '../../ui/widgets/protection_status_card.dart';
+import '../../ui/widgets/stats_grid.dart';
+import '../../ui/widgets/quick_actions.dart';
+import '../../ui/widgets/recent_activity_card.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -36,70 +17,90 @@ class HomeScreen extends StatelessWidget {
       builder: (context, appState, _) {
         return Scaffold(
           appBar: AppBar(
-            title: const Text('ScameGo'),
+            title: GestureDetector(
+              onTap: () {
+                // Developer dashboard: tap title to access
+              },
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.shield, size: 24),
+                  SizedBox(width: 8),
+                  Text('ScameGo'),
+                ],
+              ),
+            ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () => appState.notifyListeners(),
-                tooltip: 'Refresh',
+                icon: const Icon(Icons.family_restroom),
+                onPressed: () => Navigator.pushNamed(context, '/family'),
+                tooltip: 'Family Alerts',
+              ),
+              IconButton(
+                icon: const Icon(Icons.developer_mode),
+                onPressed: () => Navigator.pushNamed(context, '/dev-dashboard'),
+                tooltip: 'Developer Dashboard',
               ),
             ],
           ),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpacing.screenPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Greeting
-                Text(
-                  _getGreeting(),
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.w400,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+          body: RefreshIndicator(
+            onRefresh: () async {
+              // Pull to refresh does nothing harmful — just triggers UI rebuild
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(AppSpacing.screenPadding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Greeting
+                  Text(
+                    _getGreeting(),
+                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.w400,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                
-                // Protection Status Card
-                ProtectionStatusCard(appState: appState),
-                const SizedBox(height: AppSpacing.lg),
-                
-                // Today's Activity Stats
-                Text(
-                  "Today's Activity",
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: AppSpacing.md),
-                StatsGrid(appState: appState),
-                const SizedBox(height: AppSpacing.lg),
-                
-                // Current Exposure
-                _ExposureCard(appState: appState),
-                const SizedBox(height: AppSpacing.lg),
-                
-                // Protection Status Grid
-                Text(
-                  'Protection Status',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: AppSpacing.md),
-                _ProtectionStatusGrid(appState: appState),
-                const SizedBox(height: AppSpacing.lg),
-                
-                // Recent Activity
-                RecentActivityCard(appState: appState),
-                const SizedBox(height: AppSpacing.lg),
-                
-                // Quick Actions
-                const QuickActions(),
-              ],
+                  const SizedBox(height: AppSpacing.md),
+
+                  // Protection Status Card (REAL)
+                  ProtectionStatusCard(appState: appState),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Active Campaign Alert (if any)
+                  _ActiveCampaignBanner(appState: appState),
+
+                  // Today's Activity Stats (REAL)
+                  Text(
+                    "Today's Activity",
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  StatsGrid(appState: appState),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Current Exposure
+                  _ExposureCard(appState: appState),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Quick Actions (REAL)
+                  const QuickActions(),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Recent Activity (REAL)
+                  RecentActivityCard(appState: appState),
+                  const SizedBox(height: AppSpacing.xl),
+                ],
+              ),
             ),
           ),
         );
       },
     );
   }
-  
+
   String _getGreeting() {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Good Morning';
@@ -108,17 +109,94 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+class _ActiveCampaignBanner extends StatelessWidget {
+  final AppState appState;
+
+  const _ActiveCampaignBanner({required this.appState});
+
+  @override
+  Widget build(BuildContext context) {
+    final active = appState.campaigns.where(
+      (c) => c.isActive && (c.riskLevel == 'critical' || c.riskLevel == 'high'),
+    ).toList();
+
+    if (active.isEmpty) return const SizedBox.shrink();
+
+    final campaign = active.first;
+    final isCritical = campaign.riskLevel == 'critical';
+    final color = isCritical ? Colors.red.shade700 : Colors.orange.shade700;
+
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: () => Navigator.pushNamed(context, '/protection'),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: color, width: 2),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.campaign, color: color, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isCritical ? '🚨 ACTIVE SCAM CAMPAIGN' : '⚠️ ACTIVE SCAM CAMPAIGN',
+                        style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${campaign.categories.isNotEmpty ? campaign.categories.first.replaceAll('_', ' ') : 'Scam activity'} • ${campaign.eventCount} events',
+                        style: TextStyle(
+                          color: color.withValues(alpha: 0.8),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.arrow_forward_ios, color: color, size: 16),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+      ],
+    );
+  }
+}
+
 class _ExposureCard extends StatelessWidget {
   final AppState appState;
-  
+
   const _ExposureCard({required this.appState});
-  
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final exposure = appState.currentExposure;
-    
+
     return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: exposure > 0
+              ? Colors.red.shade300
+              : theme.colorScheme.outline.withValues(alpha: 0.3),
+          width: exposure > 0 ? 2 : 1,
+        ),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.cardPadding),
         child: Column(
@@ -128,165 +206,47 @@ class _ExposureCard extends StatelessWidget {
               children: [
                 Icon(
                   Icons.account_balance_wallet_outlined,
-                  color: theme.colorScheme.primary,
+                  color: exposure > 0 ? Colors.red.shade700 : theme.colorScheme.primary,
                   size: AppSpacing.iconSize,
                 ),
                 const SizedBox(width: AppSpacing.md),
-                Text(
-                  'Current Exposure',
-                  style: theme.textTheme.titleMedium,
-                ),
+                Text('Current Exposure', style: theme.textTheme.titleMedium),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            Text(
-              '₹${exposure.toStringAsFixed(0)}',
-              style: theme.textTheme.displayMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: exposure > 0 ? theme.colorScheme.error : theme.colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              exposure > 0 
-                  ? 'You have active campaigns with financial risk'
-                  : 'No financial exposure detected',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '₹${exposure.toStringAsFixed(0)}',
+                  style: theme.textTheme.displayMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: exposure > 0 ? Colors.red.shade700 : Colors.green.shade700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    exposure > 0 ? 'estimated at risk' : 'no financial risk',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
             ),
             if (exposure > 0) ...[
               const SizedBox(height: AppSpacing.md),
               FilledButton.icon(
-                onPressed: () {
-                  // Navigate to protection screen
-                },
+                onPressed: () => Navigator.pushNamed(context, '/protection'),
                 icon: const Icon(Icons.visibility),
-                label: const Text('View Campaigns'),
+                label: const Text('View Active Campaigns'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                ),
               ),
             ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProtectionStatusGrid extends StatelessWidget {
-  final AppState appState;
-  
-  const _ProtectionStatusGrid({required this.appState});
-  
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final items = [
-      _ProtectionItem(
-        icon: Icons.call_outlined,
-        label: 'Calls',
-        enabled: appState.isCallProtectionEnabled,
-        color: Colors.blue,
-      ),
-      _ProtectionItem(
-        icon: Icons.message_outlined,
-        label: 'SMS',
-        enabled: appState.isSmsProtectionEnabled,
-        color: Colors.green,
-      ),
-      _ProtectionItem(
-        icon: Icons.link_outlined,
-        label: 'Links',
-        enabled: true,
-        color: Colors.purple,
-      ),
-      _ProtectionItem(
-        icon: Icons.family_restroom_outlined,
-        label: 'Family Alerts',
-        enabled: appState.trustedContacts.isNotEmpty,
-        color: Colors.orange,
-      ),
-      _ProtectionItem(
-        icon: Icons.payment_outlined,
-        label: 'Payment Protection',
-        enabled: appState.isPaymentProtectionEnabled,
-        color: Colors.teal,
-      ),
-      _ProtectionItem(
-        icon: Icons.privacy_tip_outlined,
-        label: 'Privacy Mode',
-        enabled: appState.localAnalysisEnabled,
-        color: Colors.indigo,
-      ),
-    ];
-    
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 1.1,
-        crossAxisSpacing: AppSpacing.md,
-        mainAxisSpacing: AppSpacing.md,
-      ),
-      itemCount: items.length,
-      itemBuilder: (context, index) => items[index],
-    );
-  }
-}
-
-class _ProtectionItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool enabled;
-  final Color color;
-  
-  const _ProtectionItem({
-    required this.icon,
-    required this.label,
-    required this.enabled,
-    required this.color,
-  });
-  
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      color: enabled ? color.withOpacity(0.1) : theme.colorScheme.surfaceVariant.withOpacity(0.5),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: enabled ? color.withOpacity(0.3) : theme.colorScheme.outline.withOpacity(0.3),
-          width: 1.5,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 32,
-              color: enabled ? color : theme.colorScheme.onSurfaceVariant.withOpacity(0.5),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: enabled ? color : theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: enabled ? Colors.green : theme.colorScheme.onSurfaceVariant.withOpacity(0.3),
-              ),
-            ),
           ],
         ),
       ),

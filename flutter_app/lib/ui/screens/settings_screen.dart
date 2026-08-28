@@ -2,16 +2,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/app_state.dart';
+import '../../services/platform_service.dart';
 import '../../ui/theme/app_theme.dart';
-// Removed missing import
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
   
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppState>(
-      builder: (context, appState, _) {
+    return Consumer2<AppState, PlatformService>(
+      builder: (context, appState, platform, _) {
         return Scaffold(
           appBar: AppBar(title: const Text('Settings')),
           body: SingleChildScrollView(
@@ -19,6 +19,80 @@ class SettingsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Notification Protection (NEW)
+                SettingsSection(
+                  title: 'Notification Protection',
+                  icon: Icons.notifications_active,
+                  children: [
+                    if (!platform.isNotificationListenerEnabled)
+                      Container(
+                        margin: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.amber.shade400, width: 1.5),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.warning_amber_rounded, color: Colors.amber.shade800),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Notification Access Required',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.amber.shade900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'To detect scams in WhatsApp, banking apps, and SMS notifications, ScameGo requires Notification Listener permission.',
+                              style: TextStyle(fontSize: 13, color: Colors.amber.shade900),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: () async {
+                                  await platform.openNotificationListenerSettings();
+                                },
+                                icon: const Icon(Icons.settings),
+                                label: const Text('Enable Notification Access'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.amber.shade800,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    SwitchListTile(
+                      title: const Text('Notification Monitoring'),
+                      subtitle: const Text('Master switch for scanning incoming notifications'),
+                      value: appState.isNotificationProtectionEnabled,
+                      onChanged: appState.setNotificationProtectionEnabled,
+                    ),
+                    SwitchListTile(
+                      title: const Text('Messaging Apps'),
+                      subtitle: const Text('Monitor WhatsApp, Telegram, Signal notifications'),
+                      value: appState.isMessagingProtectionEnabled,
+                      onChanged: appState.setMessagingProtectionEnabled,
+                    ),
+                    SwitchListTile(
+                      title: const Text('Banking & UPI Apps'),
+                      subtitle: const Text('Monitor banking and payment notifications'),
+                      value: appState.isBankingProtectionEnabled,
+                      onChanged: appState.setBankingProtectionEnabled,
+                    ),
+                  ],
+                ),
+
                 // Scam Protection
                 SettingsSection(
                   title: 'Scam Protection',
@@ -44,7 +118,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     SwitchListTile(
                       title: const Text('Social Media Protection'),
-                      subtitle: const Text('Monitor social media DMs (requires setup)'),
+                      subtitle: const Text('Monitor Snapchat & Instagram notifications'),
                       value: appState.isSocialProtectionEnabled,
                       onChanged: appState.setSocialProtectionEnabled,
                     ),
@@ -196,9 +270,9 @@ class SettingsScreen extends StatelessWidget {
                   title: 'About',
                   icon: Icons.info,
                   children: [
-                    ListTile(
-                      title: const Text('Version'),
-                      subtitle: const Text('1.0.0'),
+                    const ListTile(
+                      title: Text('Version'),
+                      subtitle: Text('1.0.0'),
                     ),
                     ListTile(
                       title: const Text('Privacy Policy'),

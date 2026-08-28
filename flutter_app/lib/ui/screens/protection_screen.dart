@@ -52,7 +52,8 @@ class _CampaignsTab extends StatelessWidget {
   
   @override
   Widget build(BuildContext context) {
-    final campaigns = appState.campaigns..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final campaigns = List<Campaign>.from(appState.campaigns)
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     
     if (campaigns.isEmpty) {
       return _EmptyState(
@@ -86,10 +87,12 @@ class _CampaignsTab extends StatelessWidget {
             color: Theme.of(context).colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          child: SingleChildScrollView(
+          child: ListView(
             controller: scrollController,
             padding: const EdgeInsets.all(AppSpacing.lg),
-            child: _CampaignDetail(campaign: campaign),
+            children: [
+              _CampaignDetail(campaign: campaign),
+            ],
           ),
         ),
       ),
@@ -183,12 +186,12 @@ class _CampaignDetail extends StatelessWidget {
         ...campaign.stageHistory.map((stage) => Card(
           child: ListTile(
             leading: CircleAvatar(
-              backgroundColor: _stageColor(stage['stage'] as String).withOpacity(0.15),
-              child: Icon(_stageIcon(stage['stage'] as String), color: _stageColor(stage['stage'] as String)),
+              backgroundColor: _stageColor(stage.stage).withValues(alpha: 0.15),
+              child: Icon(_stageIcon(stage.stage), color: _stageColor(stage.stage)),
             ),
-            title: Text(_stageLabel(stage['stage'] as String)),
-            subtitle: Text(stage['detected_at'] as String? ?? ''),
-            trailing: Text('${(stage['confidence'] as double? ?? 1.0) * 100}%'),
+            title: Text(_stageLabel(stage.stage)),
+            subtitle: Text(stage.label.isNotEmpty ? stage.label : stage.timestamp.toIso8601String()),
+            trailing: Text('${(stage.confidence * 100).toInt()}%'),
           ),
         )),
         const SizedBox(height: AppSpacing.lg),
@@ -248,7 +251,6 @@ class _CampaignDetail extends StatelessWidget {
     return stage.replaceAll('_', ' ').toUpperCase();
   }
 }
-
 class _HistoryTab extends StatelessWidget {
   final AppState appState;
   
@@ -256,7 +258,8 @@ class _HistoryTab extends StatelessWidget {
   
   @override
   Widget build(BuildContext context) {
-    final events = appState.scamHistory..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final events = List<ScamEvent>.from(appState.scamHistory)
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
     
     if (events.isEmpty) {
       return _EmptyState(
@@ -284,36 +287,20 @@ class _HistoryTile extends StatelessWidget {
     final theme = Theme.of(context);
     final risk = event.risk;
     final riskColor = RiskColors.forLevel(risk.level, context);
-    final riskBgColor = RiskColors.backgroundForLevel(risk.level, context);
-    
-    final date = event.timestamp;
-    final timeStr = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    final dateStr = '${date.day}/${date.month}/${date.year}';
     
     return Card(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      color: riskBgColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: riskColor.withOpacity(0.3), width: 1.5),
-      ),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: riskColor.withOpacity(0.15),
-          child: Icon(
-            event.channel == 'call' ? Icons.call : Icons.message,
-            color: riskColor,
-          ),
+          backgroundColor: riskColor.withValues(alpha: 0.15),
+          child: Icon(RiskColors.iconForLevel(risk.level), color: riskColor),
         ),
-        title: Text(
-          event.sender,
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-        ),
+        title: Text(event.headline.isNotEmpty ? event.headline : event.sender),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('$dateStr at $timeStr', style: theme.textTheme.bodySmall),
-            const SizedBox(height: 2),
+            Text(event.text.length > 50 ? '${event.text.substring(0, 50)}...' : event.text),
+            const SizedBox(height: 4),
             Row(
               children: [
                 Container(
@@ -353,10 +340,12 @@ class _HistoryTile extends StatelessWidget {
             color: Theme.of(context).colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          child: SingleChildScrollView(
+          child: ListView(
             controller: scrollController,
             padding: const EdgeInsets.all(AppSpacing.lg),
-            child: _ScamEventDetail(event: event),
+            children: [
+              _ScamEventDetail(event: event),
+            ],
           ),
         ),
       ),
@@ -371,8 +360,10 @@ class _TimelineTab extends StatelessWidget {
   
   @override
   Widget build(BuildContext context) {
-    final events = appState.scamHistory..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    final campaigns = appState.campaigns..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final events = List<ScamEvent>.from(appState.scamHistory)
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final campaigns = List<Campaign>.from(appState.campaigns)
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     
     if (events.isEmpty && campaigns.isEmpty) {
       return _EmptyState(
@@ -567,7 +558,7 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 80, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.3)),
+            Icon(icon, size: 80, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3)),
             const SizedBox(height: AppSpacing.lg),
             Text(title, style: theme.textTheme.headlineSmall),
             const SizedBox(height: AppSpacing.sm),
@@ -611,6 +602,104 @@ class _InfoRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ScamEventDetail extends StatelessWidget {
+  final ScamEvent event;
+
+  const _ScamEventDetail({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final risk = event.risk;
+    final riskColor = RiskColors.forLevel(risk.level, context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Center(
+          child: Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.outline,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+        Row(
+          children: [
+            Icon(RiskColors.iconForLevel(risk.level), color: riskColor, size: 32),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(event.headline.isNotEmpty ? event.headline : event.sender, style: theme.textTheme.titleLarge),
+                  const SizedBox(height: AppSpacing.xs),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+                    decoration: BoxDecoration(
+                      color: riskColor,
+                      borderRadius: BorderRadius.circular(AppSpacing.xl),
+                    ),
+                    child: Text(
+                      '${risk.level.toUpperCase()} • ${risk.score}/100',
+                      style: theme.textTheme.labelLarge?.copyWith(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Event Details', style: theme.textTheme.titleMedium),
+                const SizedBox(height: AppSpacing.md),
+                _InfoRow(label: 'Channel', value: event.channel.toUpperCase()),
+                _InfoRow(label: 'Sender', value: event.sender),
+                _InfoRow(label: 'Time', value: '${event.timestamp.day}/${event.timestamp.month}/${event.timestamp.year} at ${event.timestamp.hour.toString().padLeft(2, '0')}:${event.timestamp.minute.toString().padLeft(2, '0')}'),
+                _InfoRow(label: 'Risk Level', value: risk.level.toUpperCase(), valueStyle: TextStyle(color: riskColor, fontWeight: FontWeight.w600)),
+                _InfoRow(label: 'Risk Score', value: '${risk.score}/100'),
+              ],
+            ),
+          ),
+        ),
+        if (risk.explanations?.isNotEmpty ?? false) ...[
+          const SizedBox(height: AppSpacing.md),
+          Text('Signals Detected:', style: theme.textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.sm),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: risk.explanations!.map((e) => Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.circle, size: 8, color: riskColor),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(child: Text(e, style: theme.textTheme.bodyMedium)),
+                    ],
+                  ),
+                )).toList(),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

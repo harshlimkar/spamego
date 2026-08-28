@@ -5,12 +5,15 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import '../models/scam_event.dart';
+import '../models/notification_event.dart';
 import 'call_audio_service.dart';
 import 'stt_service.dart';
+
 class PlatformService extends ChangeNotifier {
   static const MethodChannel _channel = MethodChannel('scamego/platform');
   static const EventChannel _smsChannel = EventChannel('scamego/sms_stream');
   static const EventChannel _callChannel = EventChannel('scamego/call_stream');
+  static const EventChannel _notificationChannel = EventChannel('scamego/notification_stream');
   
   bool _isInitialized = false;
   bool _hasSmsPermission = false;
@@ -25,6 +28,7 @@ class PlatformService extends ChangeNotifier {
   // Callbacks for incoming events
   Function(ScamEvent)? onSmsReceived;
   Function(ScamEvent)? onCallReceived;
+  Function(NotificationEvent)? onNotificationReceived;
   Function(String)? onCallStateChanged;
   
   bool get isInitialized => _isInitialized;
@@ -47,9 +51,7 @@ class PlatformService extends ChangeNotifier {
             sender: 'LIVE_CALL',
             text: text,
           );
-          if (event != null) {
-            onCallReceived?.call(event);
-          }
+          onCallReceived?.call(event);
         }
       });
       
@@ -69,6 +71,12 @@ class PlatformService extends ChangeNotifier {
       _callChannel.receiveBroadcastStream().listen(
         _onCallEvent,
         onError: (error) => debugPrint('Call stream error: $error'),
+      );
+
+      // Listen to notification stream
+      _notificationChannel.receiveBroadcastStream().listen(
+        _onNotificationEvent,
+        onError: (error) => debugPrint('Notification stream error: $error'),
       );
       
       _isInitialized = true;
@@ -115,6 +123,18 @@ class PlatformService extends ChangeNotifier {
       await _channel.invokeMethod('openNotificationListenerSettings');
     } catch (e) {
       debugPrint('Open notification settings error: $e');
+    }
+  }
+
+  Future<bool> checkNotificationListenerPermission() async {
+    try {
+      final enabled = await _channel.invokeMethod<bool>('isNotificationListenerEnabled') ?? false;
+      _isNotificationListenerEnabled = enabled;
+      notifyListeners();
+      return enabled;
+    } catch (e) {
+      debugPrint('Check notification listener error: $e');
+      return false;
     }
   }
   
@@ -230,6 +250,16 @@ class PlatformService extends ChangeNotifier {
       debugPrint('Call event parse error: $e');
     }
   }
+
+  void _onNotificationEvent(dynamic event) {
+    try {
+      final data = Map<String, dynamic>.from(event as Map);
+      final notifEvent = NotificationEvent.fromMap(data);
+      onNotificationReceived?.call(notifEvent);
+    } catch (e) {
+      debugPrint('Notification event parse error: $e');
+    }
+  }
   
   ScamEvent _mapToScamEvent(Map<String, dynamic> data) {
     return ScamEvent(
@@ -265,35 +295,22 @@ class PlatformService extends ChangeNotifier {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:8000/api/ml/analyze'),
+        Uri.parse('http://127.0.0.1:8000/api/intel/analyze'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
+          'channel': channel,
+          'sender': sender,
           'text': text,
-          'content_type': channel,
-          'content_id': 0,
+          'upi_id': upiId,
+          'amount_inr': amountInr,
+          'url': url,
+          'recipient': recipient,
         }),
       );
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
         
-        // Map backend ML format to ScamEvent
-        final mlLabel = data['scam_label'] as String? ?? 'UNKNOWN';
-        final mlScore = data['risk_score'] as int? ?? 0;
-        final confidence = (data['confidence'] as num?)?.toDouble() ?? 0.0;
-        
-        // Construct risk map compatible with RiskResult.fromJson
-        final riskData = {
-          'level': mlLabel.toLowerCase() == 'scam' ? 'high' : 
-                   mlLabel.toLowerCase() == 'spam' ? 'medium' : 'low',
-          'score': mlScore,
-          'confidence': confidence,
-          'explanations': [
-            'ML Analysis matched pattern: $mlLabel',
-            if (mlScore > 50) 'High risk language detected'
-          ],
-        };
-
         return ScamEvent(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           channel: channel,
@@ -301,18 +318,17 @@ class PlatformService extends ChangeNotifier {
           sender: sender,
           text: text,
           normalized: text.toLowerCase(),
-          language: 'en',
-          verdict: mlLabel,
-          headline: mlLabel == 'SCAM' ? 'Suspicious Message' : 
-                   mlLabel == 'SPAM' ? 'Potential Spam' : 'Message appears safe',
-          risk: RiskResult.fromJson(riskData),
-          campaign: CampaignInfo.fromJson({}),
-          intervention: Intervention.fromJson({
-            'action': mlLabel == 'SCAM' ? 'block' : 'warn',
-            'title': mlLabel == 'SCAM' ? 'Danger' : 'Warning',
-            'message': 'ML Analysis flagged this message.',
-          }),
-          familyAlert: FamilyAlertDecision.fromJson({}),
+          language: data['language'] as String? ?? 'en',
+          verdict: data['verdict'] as String? ?? 'UNKNOWN',
+          headline: data['headline'] as String? ?? 'Analyzed Event',
+          risk: RiskResult.fromJson(data['risk'] as Map<String, dynamic>? ?? {}),
+          campaign: CampaignInfo.fromJson(data['campaign'] as Map<String, dynamic>? ?? {}),
+          intervention: Intervention.fromJson(data['intervention'] as Map<String, dynamic>? ?? {}),
+          familyAlert: FamilyAlertDecision.fromJson(data['family_alert'] as Map<String, dynamic>? ?? {}),
+          recovery: data['recovery'] != null 
+              ? RecoveryPlan.fromJson(data['recovery'] as Map<String, dynamic>)
+              : null,
+          supportSms: data['support_sms'] as String?,
         );
       } else {
         throw Exception('Failed to analyze with backend: ${response.statusCode}');
