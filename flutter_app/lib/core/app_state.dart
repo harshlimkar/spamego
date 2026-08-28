@@ -647,9 +647,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
   
-  void toggleAutomaticCriticalAlerts(bool value) {
+  Future<void> toggleAutomaticCriticalAlerts(bool value) async {
     _automaticCriticalAlerts = value;
-    _storage.savePreferences({'automatic_critical_alerts': value});
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('automatic_critical_alerts', value);
     notifyListeners();
   }
 
