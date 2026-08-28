@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../models/notification_event.dart';
 import '../models/scam_event.dart';
 import '../core/app_state.dart';
+import '../core/api_config.dart';
 import 'threat_event_normalizer.dart';
 import 'risk_engine.dart';
 
@@ -15,7 +16,7 @@ class ThreatAnalysisService {
 
   ThreatAnalysisService({
     required AppState appState,
-    String backendBaseUrl = 'http://127.0.0.1:8000',
+    String backendBaseUrl = ApiConfig.baseUrl,
   })  : _appState = appState,
         _backendBaseUrl = backendBaseUrl;
 

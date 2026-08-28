@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/scam_event.dart';
 import '../models/campaign.dart';
+import '../models/campaign_alert.dart';
 import '../models/trusted_contact.dart';
 import '../services/storage_service.dart';
 
@@ -31,6 +32,12 @@ class AppState extends ChangeNotifier {
   final List<Campaign> _campaigns = [];
   final List<TrustedContact> _trustedContacts = [];
   
+  // Campaign Alerts
+  CampaignAlert? _latestCampaignAlert;
+  final Set<String> _processedCampaignAlertIds = {};
+  
+  CampaignAlert? get latestCampaignAlert => _latestCampaignAlert;
+  
   // Settings
   bool _alertLowRisk = false;
   bool _alertHighRisk = true;
@@ -46,8 +53,9 @@ class AppState extends ChangeNotifier {
   bool _familyAlertOnRepeatAttempts = false;
   bool _familyAlertOnOtpRequest = false;
   bool _familyAlertOnRemoteAccess = false;
+  bool _automaticCriticalAlerts = false; // New preference for Campaign Alerts
   
-  // Getters
+  bool get automaticCriticalAlerts => _automaticCriticalAlerts;
   bool get isProtectionEnabled => _isProtectionEnabled;
   bool get isCallProtectionEnabled => _isCallProtectionEnabled;
   bool get isSmsProtectionEnabled => _isSmsProtectionEnabled;
@@ -624,5 +632,29 @@ class AppState extends ChangeNotifier {
 
     _calculateTodaysStats();
     notifyListeners();
+  void toggleAutomaticCriticalAlerts(bool value) {
+    _automaticCriticalAlerts = value;
+    _storage.savePreferences({'automatic_critical_alerts': value});
+    notifyListeners();
+  }
+
+  bool processCampaignAlert(CampaignAlert alert) {
+    // Duplicate Protection logic
+    final String dedupeKey = '${alert.campaignId}_${alert.threatLevel}_${alert.cumulativeRisk}';
+    
+    if (_processedCampaignAlertIds.contains(dedupeKey)) {
+      return false; // Already processed this exact alert state
+    }
+    
+    _processedCampaignAlertIds.add(dedupeKey);
+    _latestCampaignAlert = alert;
+    notifyListeners();
+    
+    // Only return true if it is a critical threat (triggers navigation/notification)
+    if (alert.cumulativeRisk >= 85 || alert.threatLevel == 'CRITICAL_ATTACK') {
+      return true;
+    }
+    
+    return false;
   }
 }

@@ -116,6 +116,64 @@ class _ActiveCampaignBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final alert = appState.latestCampaignAlert;
+    
+    if (alert != null) {
+      final isCritical = alert.cumulativeRisk >= 85 || alert.threatLevel == 'CRITICAL_ATTACK';
+      final color = isCritical ? Colors.red.shade700 : Colors.orange.shade700;
+
+      return Column(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.pushNamed(context, isCritical ? '/critical-alert' : '/protection'),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: color, width: 2),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.campaign, color: color, size: 32),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isCritical ? '🚨 CRITICAL SCAM ALERT' : '⚠️ ACTIVE SCAM THREAT',
+                          style: TextStyle(
+                            color: color,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          alert.plainLanguageWarning,
+                          style: TextStyle(
+                            color: color.withValues(alpha: 0.9),
+                            fontSize: 13,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.arrow_forward_ios, color: color, size: 16),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      );
+    }
+    
+    // Fallback to legacy campaign state
     final active = appState.campaigns.where(
       (c) => c.isActive && (c.riskLevel == 'critical' || c.riskLevel == 'high'),
     ).toList();
@@ -170,7 +228,7 @@ class _ActiveCampaignBanner extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: AppSpacing.xl),
+        const SizedBox(height: 16),
       ],
     );
   }

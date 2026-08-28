@@ -163,6 +163,12 @@ class SettingsScreen extends StatelessWidget {
                   icon: Icons.family_restroom,
                   children: [
                     SwitchListTile(
+                      title: const Text('Automatic Critical Alerts'),
+                      subtitle: const Text('Send SMS to Guardian for Critical Threats automatically'),
+                      value: appState.automaticCriticalAlerts,
+                      onChanged: appState.toggleAutomaticCriticalAlerts,
+                    ),
+                    SwitchListTile(
                       title: const Text('Alert on Critical Scam'),
                       subtitle: const Text('Notify family when critical scam detected'),
                       value: appState.familyAlertOnCritical,

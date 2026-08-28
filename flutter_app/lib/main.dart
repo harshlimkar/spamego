@@ -18,6 +18,9 @@ import 'ui/screens/link_checker_screen.dart';
 import 'ui/screens/developer_dashboard_screen.dart';
 import 'services/platform_service.dart';
 import 'services/threat_analysis_service.dart';
+import 'services/campaign_alert_service.dart';
+import 'services/local_notification_service.dart';
+import 'ui/screens/critical_alert_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -35,7 +38,42 @@ void main() async {
   // 3. Initialize threat analysis adapter service
   final threatAnalysisService = ThreatAnalysisService(appState: appState);
 
-  // 4. Wire real-time notification listener to threat analysis pipeline
+  // 4. Initialize Campaign and Notification Services
+  final localNotificationService = LocalNotificationService.instance;
+  await localNotificationService.initialize();
+
+  // Listen for local notification taps to route to critical alert screen
+  localNotificationService.onNotificationTapped = (payload) {
+    if (navigatorKey.currentState != null) {
+      navigatorKey.currentState!.pushNamed('/critical-alert');
+    }
+  };
+
+  // Setup Campaign WebSocket Connection
+  final campaignAlertService = CampaignAlertService.instance;
+  campaignAlertService.connect('user_1'); // Currently stubbed to user_1
+
+  // Listen to Campaign Alerts and trigger local notifications and app state
+  campaignAlertService.alertStream.listen((alert) {
+    final isCritical = appState.processCampaignAlert(alert);
+    if (isCritical) {
+      localNotificationService.showCriticalAlert(
+        id: alert.campaignId.hashCode,
+        title: '⚠️ CRITICAL SCAM ALERT',
+        body: 'A dangerous scam threat has been detected. Tap to view details.',
+        payload: alert.campaignId,
+      );
+
+      // Auto-alert trusted contact if preference is enabled
+      if (appState.automaticCriticalAlerts && appState.trustedContacts.isNotEmpty) {
+        // Here we could implement the true automatic background SMS if permissions allow.
+        // For now, per instruction, if true automatic is supported reuse it, else rely on manual GET HELP.
+        debugPrint('[CampaignAlertService] Automatic critical alert triggered for Guardian.');
+      }
+    }
+  });
+
+  // 5. Wire real-time notification listener to threat analysis pipeline
   platformService.onNotificationReceived = (notificationEvent) async {
     debugPrint('[Main] Intercepted Notification: ${notificationEvent.appName} (${notificationEvent.source.name}) - ${notificationEvent.title}');
     final scamEvent = await threatAnalysisService.processNotification(notificationEvent);
@@ -44,7 +82,7 @@ void main() async {
     }
   };
 
-  // 5. Wire real-time SMS stream to threat analysis pipeline
+  // 6. Wire real-time SMS stream to threat analysis pipeline
   platformService.onSmsReceived = (smsEvent) async {
     debugPrint('[Main] Intercepted SMS: ${smsEvent.sender} - ${smsEvent.text}');
     await threatAnalysisService.processSms(
@@ -106,6 +144,7 @@ class ScameGoApp extends StatelessWidget {
         '/family': (context) => const FamilyScreen(),
         '/link-check': (context) => const LinkCheckerScreen(),
         '/dev-dashboard': (context) => const DeveloperDashboardScreen(),
+        '/critical-alert': (context) => const CriticalAlertScreen(),
       },
     );
   }

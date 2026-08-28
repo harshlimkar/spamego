@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import '../models/scam_event.dart';
 import '../models/notification_event.dart';
+import '../core/api_config.dart';
 import 'call_audio_service.dart';
 import 'stt_service.dart';
 
@@ -295,7 +296,7 @@ class PlatformService extends ChangeNotifier {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('http://127.0.0.1:8000/api/intel/analyze'),
+        Uri.parse(ApiConfig.analyzeEndpoint),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'channel': channel,
