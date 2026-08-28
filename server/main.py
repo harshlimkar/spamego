@@ -3,6 +3,7 @@ from server.api.sms_gateway import router as sms_router
 from server.api.sync import router as sync_router
 from server.database.db_setup import init_db, seed_db
 from backend.app.api.ml_router import router as ml_router
+from server.api.firewall_router import router as firewall_router
 import os
 
 app = FastAPI(title="ScameGo Intelligence Server")
@@ -17,6 +18,7 @@ async def startup_event():
 app.include_router(sms_router, prefix="/api")
 app.include_router(sync_router, prefix="/api")
 app.include_router(ml_router, prefix="/api/ml")
+app.include_router(firewall_router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn

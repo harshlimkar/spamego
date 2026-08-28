@@ -2,7 +2,7 @@ from sms.sms_normalizer import SMSNormalizer
 from core.keyword_engine import KeywordEngine
 from core.rule_engine import RuleEngine
 from core.verification_engine import VerificationEngine
-from core.risk_engine import RiskEngine
+from risk_scoring.risk_manager import RiskManager
 from core.campaign_engine import CampaignEngine
 from core.remote_client import RemoteIntelligenceClient
 from database.repository import NumberRepository
@@ -14,7 +14,7 @@ class SMSProcessor:
         self.keyword_engine = KeywordEngine()
         self.rule_engine = RuleEngine()
         self.verification_engine = VerificationEngine()
-        self.risk_engine = RiskEngine()
+        self.risk_manager = RiskManager()
         self.campaign_engine = CampaignEngine()
         self.remote_client = RemoteIntelligenceClient()
 
@@ -33,10 +33,11 @@ class SMSProcessor:
         ver_result = self.verification_engine.verify_number(sender_number)
 
         # 5. Calculate Local Risk
-        risk_result = self.risk_engine.calculate_risk(
+        risk_result = self.risk_manager.evaluate_event_risk(
             kw_result["keyword_weight"], 
             rule_result["rule_risk_score"], 
-            ver_result["risk_modifier"]
+            ver_result["risk_modifier"],
+            source="SMS"
         )
 
         # Phase 10: Automatic Remote Query

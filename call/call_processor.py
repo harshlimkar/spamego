@@ -1,7 +1,7 @@
 from core.keyword_engine import KeywordEngine
 from core.rule_engine import RuleEngine
 from core.verification_engine import VerificationEngine
-from core.risk_engine import RiskEngine
+from risk_scoring.risk_manager import RiskManager
 from core.campaign_engine import CampaignEngine
 
 class CallProvider:
@@ -26,7 +26,7 @@ class CallProcessor:
         self.keyword_engine = KeywordEngine()
         self.rule_engine = RuleEngine()
         self.verification_engine = VerificationEngine()
-        self.risk_engine = RiskEngine()
+        self.risk_manager = RiskManager()
         self.campaign_engine = CampaignEngine()
 
     def process_call(self, call_provider: CallProvider):
@@ -38,10 +38,11 @@ class CallProcessor:
         rule_result = self.rule_engine.evaluate_rules(kw_result["categories"], kw_result["keywords_detected"])
         ver_result = self.verification_engine.verify_number(caller_number)
         
-        risk_result = self.risk_engine.calculate_risk(
+        risk_result = self.risk_manager.evaluate_event_risk(
             kw_result["keyword_weight"], 
             rule_result["rule_risk_score"], 
-            ver_result["risk_modifier"]
+            ver_result["risk_modifier"],
+            source="CALL"
         )
 
         camp_result = self.campaign_engine.process_event(
